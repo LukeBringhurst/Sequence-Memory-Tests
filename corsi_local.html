@@ -1,0 +1,347 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Martial Arts Memory Study</title>
+  <style>
+    :root { --cell: 90px; --gap: 18px; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: #fafafa; margin: 0;
+      font-size: 18px;
+    }
+    .wrap { max-width: 900px; margin: 32px auto; padding: 0 16px; }
+    .card {
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 20px;
+    }
+    h1,h2,h3 { margin: 0 0 10px; }
+    .muted { color: #666; font-size: 14px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, var(--cell));
+      grid-gap: var(--gap);
+      justify-content: center;
+      margin: 16px auto 8px;
+    }
+    .cell {
+      width: var(--cell); height: var(--cell);
+      background: #bdbdbd;
+      border-radius: 10px; user-select: none;
+      transition: background 0.2s;
+    }
+    .on { background: #ffd54f !important; }
+    .btn {
+      display: inline-block; background: #1976d2; color: #fff;
+      border: none; border-radius: 8px;
+      padding: 10px 16px; font-size: 16px;
+      cursor: pointer; margin: 8px 6px 0;
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    input[type=text] {
+      padding: 8px 10px; font-size: 16px;
+      border: 1px solid #ccc; border-radius: 6px;
+    }
+    ul { margin: 8px 0 0 18px; }
+    .footer { margin-top: 10px; }
+    .center { text-align: center; }
+    .spacer { height: 10px; }
+    table { border-collapse: collapse; margin-top: 10px; }
+    td, th { border: 1px solid #ddd; padding: 6px 10px; }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div id="app" class="card"></div>
+  </div>
+  <script>
+/*** ========== CONFIG ========== ***/
+const CONFIG = {
+  corsi: {
+    runsPerSession: 3,
+    startLen: 3,
+    maxLen: 16,
+    presentMs: 450,
+    isiMs: 350,
+    feedback: true
+  },
+  seq: {
+    runsPerSession: 1,
+    startLen: 2,
+    presentMs: 450,
+    isiMs: 350,
+    feedback: true
+  }
+};
+
+const GRID = Array.from({ length: 16 }, (_, i) => i);
+let state = {
+  pid: null,
+  task: 'corsi',
+  runIndex: 0,
+  data: []
+};
+
+const app = document.getElementById('app');
+function html(s) { app.innerHTML = s; }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function gridHTML() {
+  return `<div class="grid">${GRID.map(i =>
+    `<div class="cell" id="c${i}" data-idx="${i}"></div>`).join('')}</div>`;
+}
+
+function welcomeScreen() {
+  html(`
+    <h2>Martial Arts Memory Study</h2>
+    <p>Please enter your Participant ID to begin:</p>
+    <input type="text" id="pid" placeholder="e.g., MA001">
+    <div class="spacer"></div>
+    <div class="muted">You will complete two short memory tests.</div>
+    <button class="btn" id="begin">Start</button>
+  `);
+  document.getElementById('begin').onclick = () => {
+    const pid = document.getElementById('pid').value.trim();
+    state.pid = pid || 'anon_' + Math.random().toString(36).slice(2, 8);
+    state.task = 'corsi';
+    state.runIndex = 0;
+    startNextRun();
+  };
+}
+
+async function playSequence(seq, ms = 450, gap = 350) {
+  for (const idx of seq) {
+    const el = document.getElementById('c' + idx);
+    el.classList.add('on');
+    await sleep(ms);
+    el.classList.remove('on');
+    await sleep(gap);
+  }
+}
+
+function collectClicks(n) {
+  return new Promise(resolve => {
+    const clicked = [];
+    const grid = document.querySelector('.grid');
+    const handler = (e) => {
+      const cell = e.target.closest('.cell');
+      if (!cell) return;
+      const idx = parseInt(cell.dataset.idx, 10);
+      clicked.push(idx);
+      cell.classList.add('on');
+      setTimeout(() => cell.classList.remove('on'), 150);
+      if (clicked.length === n) {
+        grid.removeEventListener('click', handler);
+        resolve(clicked);
+      }
+    };
+    grid.addEventListener('click', handler);
+  });
+}
+
+async function startNextRun() {
+  if (state.task === 'corsi') {
+    if (state.runIndex >= CONFIG.corsi.runsPerSession) {
+      state.task = 'sequence';
+      state.runIndex = 0;
+      const bestSpan = Math.max(
+        ...state.data.filter(r => r.type === 'corsi' && r.correct).map(r => r.len),
+        0
+      );
+      html(`
+        <h2>Take a short break.</h2>
+        <p>You completed the Corsi test. Your best span was <b>${bestSpan}</b>.</p>
+        <p>Click below to begin the next task.</p>
+        <button class="btn" id="next">Continue</button>
+      `);
+      document.getElementById('next').onclick = startNextRun;
+      return;
+    }
+    state.runIndex++;
+    await runCorsi(state.runIndex);
+  } else {
+    if (state.runIndex >= CONFIG.seq.runsPerSession) {
+      showFinalScreen();
+      return;
+    }
+    state.runIndex++;
+    await runSequenceTask(state.runIndex);
+  }
+}
+
+async function runCorsi(runNumber) {
+  let currentLen = CONFIG.corsi.startLen;
+  let failures = 0;
+  let bestSpan = 0;
+  let trialIndex = 0;
+
+  while (failures < 2 && currentLen <= CONFIG.corsi.maxLen) {
+    const isRetry = failures > 0;
+    if (!isRetry) trialIndex++;
+    html(`<h3>Corsi Test – Run ${runNumber}, Trial ${trialIndex}${isRetry ? " (Retry)" : ""}</h3>${gridHTML()}<div class="muted">Watch the pattern, then click in the same order.</div>`);
+    const seq = shuffle([...GRID]).slice(0, currentLen);
+    await sleep(600);
+    await playSequence(seq, CONFIG.corsi.presentMs, CONFIG.corsi.isiMs);
+    const startTime = performance.now();
+    const clicked = await collectClicks(seq.length);
+    const rt = performance.now() - startTime;
+    const correct = clicked.every((v, i) => v === seq[i]);
+    if (correct) {
+      bestSpan = Math.max(bestSpan, currentLen);
+      currentLen++;
+      failures = 0;
+    } else {
+      failures++;
+    }
+    state.data.push({
+      type: 'corsi',
+      run: runNumber,
+      trial: trialIndex,
+      len: seq.length,
+      correct: correct ? 1 : 0,
+      seq: seq.join('-'),
+      clicked: clicked.join('-'),
+      rt_ms: Math.round(rt),
+      participant: state.pid,
+      timestamp: new Date().toISOString()
+    });
+    if (CONFIG.corsi.feedback) {
+      const msg = correct ? "Correct!" : "Incorrect";
+      const note = document.createElement('div');
+      note.textContent = msg;
+      note.style.marginTop = '8px';
+      app.appendChild(note);
+      await sleep(600);
+    }
+    await sleep(400);
+  }
+
+  html(`<h3>Run ${runNumber} complete.</h3><p>Best span: <b>${bestSpan}</b></p><button class="btn" id="next">Next</button>`);
+  document.getElementById('next').onclick = startNextRun;
+}
+
+async function runSequenceTask(runNumber) {
+  let sequence = [Math.floor(Math.random() * 9)];
+  let trialIndex = 0;
+  let maxSpan = 0;
+  let endTask = false;
+
+  while (!endTask) {
+    trialIndex++;
+    let retries = 0;
+    let correct = false;
+
+    while (retries < 2) {
+      html(`<h3>Sequence Task – Run ${runNumber}, Trial ${trialIndex}${retries > 0 ? " (Retry)" : ""}</h3>
+            ${gridHTML()}
+            <div class="muted">Watch the pattern, then click it back in the same order.</div>
+	    `);
+      await sleep(500);
+      if (retries === 0) {
+        await playSequence(sequence, CONFIG.seq.presentMs, CONFIG.seq.isiMs);
+      }
+      const startTime = performance.now();
+      const clicked = await collectClicks(sequence.length);
+      const rt = performance.now() - startTime;
+      correct = clicked.length === sequence.length && clicked.every((v, i) => v === sequence[i]);
+
+      state.data.push({
+        type: 'sequence_trial',
+        participant: state.pid,
+        run: runNumber,
+        trial: trialIndex,
+        seq_len: sequence.length,
+        seq: sequence.join('-'),
+        clicked: clicked.join('-'),
+        correct: correct ? 1 : 0,
+        rt_ms: Math.round(rt),
+        retries
+      });
+
+      if (correct) {
+        if (CONFIG.seq.feedback) {
+    	  const msg = "Correct!";
+    	  const note = document.createElement('div');
+    	  note.textContent = msg;
+    	  note.style.marginTop = '8px';
+    	  app.appendChild(note);
+    	  await sleep(700);
+  	  }
+
+	maxSpan = Math.max(maxSpan, sequence.length);
+        sequence.push(getNextCell(sequence));
+        await sleep(300);
+        break; // Exit retry loop and continue to next trial
+      } else if (retries === 0) {
+        retries++;
+        if (CONFIG.seq.feedback) {
+          const msg = correct ? "Correct!" : "Incorrect";
+          const note = document.createElement('div');
+          note.textContent = msg;
+  	  note.style.marginTop = '8px';
+  	  app.appendChild(note);
+  	  await sleep(700);
+	  }
+      } else {
+        endTask = true;
+        break;
+      }
+    }
+  }
+
+  state.data.push({
+    type: 'sequence_runEnd',
+    participant: state.pid,
+    run: runNumber,
+    maxSpan
+  });
+
+  html(`<h3>Sequence Task – Run Complete</h3>
+        <p>Your max span was <b>${maxSpan}</b></p>
+        <button class="btn" id="continue">Finish</button>`);
+  document.getElementById('continue').onclick = showFinalScreen;
+}
+
+
+
+
+function getNextCell(currentSeq) {
+  let next;
+  do {
+    next = Math.floor(Math.random() * 9);
+  } while (next === currentSeq[currentSeq.length - 1]);
+  return next;
+}
+
+function showFinalScreen() {
+  html(`<h2>Thank you!</h2><p>Click below to download your results.</p><button class="btn" id="dl">Download CSV</button>`);
+  document.getElementById('dl').onclick = downloadCSV;
+}
+
+function downloadCSV() {
+  const headers = Object.keys(state.data[0]);
+  const rows = state.data.map(row => headers.map(k => `"${String(row[k] ?? '')}"`).join(','));
+  const csvData = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csvData], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `memory_results_${state.pid}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+welcomeScreen();
+</script>
+</body>
+</html>
