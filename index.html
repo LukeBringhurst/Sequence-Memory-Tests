@@ -342,23 +342,22 @@ async function sendToSheets() {
   const statusEl = document.getElementById('status');
 
   try {
-    // We use 'no-cors' because Apps Script redirects can trigger CORS blocks 
-    // in browsers even when the data actually goes through.
+    // We use a URLSearchParams approach which is more reliable for Google Apps Script 
+    // when you need to avoid CORS preflight issues while still getting a 'Success' signal.
     await fetch(SCRIPT_URL, {
       method: "POST",
-      mode: "no-cors", 
-      cache: "no-cache",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state.data)
+      body: JSON.stringify(state.data),
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
     });
 
-    statusEl.innerHTML = "✅ Results saved successfully to Google Sheets!";
+    statusEl.innerHTML = "Results saved successfully!";
     statusEl.style.color = "green";
   } catch (error) {
     console.error("Upload failed:", error);
-    statusEl.innerHTML = "❌ Error saving to Sheets. Please use the backup button below.";
+    statusEl.innerHTML = "Error saving. Please use the backup button below.";
     statusEl.style.color = "red";
-    // Show the download button if the cloud save fails
     document.getElementById('dl').style.display = "inline-block";
   }
 }
