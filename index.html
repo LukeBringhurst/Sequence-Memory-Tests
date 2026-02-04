@@ -323,11 +323,47 @@ function getNextCell(currentSeq) {
   return next;
 }
 
+// 1. Updated showFinalScreen to trigger the upload automatically
 function showFinalScreen() {
-  html(`<h2>Thank you!</h2><p>Click below to download your results.</p><button class="btn" id="dl">Download CSV</button>`);
-  document.getElementById('dl').onclick = downloadCSV;
+  html(`
+    <h2>Thank you!</h2>
+    <div id="status">Saving results to Google Sheets...</div>
+    <br>
+    <button class="btn" id="dl" style="display:none;">Download CSV Backup</button>
+  `);
+  
+  // Start the upload immediately
+  sendToSheets();
 }
 
+// 2. New function to handle the Google Sheets API call
+async function sendToSheets() {
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwf8kakR58UPZN3srCDEbZEWcbe-mrGEnc-gKF_BeqwxHuVW6Vs1YLpnsPRzlPhF6Aj/exec"; 
+  const statusEl = document.getElementById('status');
+
+  try {
+    // We use 'no-cors' because Apps Script redirects can trigger CORS blocks 
+    // in browsers even when the data actually goes through.
+    await fetch(SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors", 
+      cache: "no-cache",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.data)
+    });
+
+    statusEl.innerHTML = "✅ Results saved successfully to Google Sheets!";
+    statusEl.style.color = "green";
+  } catch (error) {
+    console.error("Upload failed:", error);
+    statusEl.innerHTML = "❌ Error saving to Sheets. Please use the backup button below.";
+    statusEl.style.color = "red";
+    // Show the download button if the cloud save fails
+    document.getElementById('dl').style.display = "inline-block";
+  }
+}
+
+// 3. Keep downloadCSV exactly as it is for manual backups
 function downloadCSV() {
   const headers = Object.keys(state.data[0]);
   const rows = state.data.map(row => headers.map(k => `"${String(row[k] ?? '')}"`).join(','));
@@ -340,6 +376,11 @@ function downloadCSV() {
   a.click();
   a.remove();
 }
+
+// Add event listener for the backup button
+document.addEventListener('click', e => {
+  if(e.target && e.target.id === 'dl') downloadCSV();
+});
 
 welcomeScreen();
 </script>
