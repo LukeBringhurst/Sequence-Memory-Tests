@@ -226,6 +226,14 @@ async function runCorsi(runNumber) {
     await sleep(400);
   }
 
+  state.data.push({
+    type: 'corsi_runEnd',
+    participant: state.pid,
+    run: runNumber,
+    maxSpan: bestSpan,
+    timestamp: new Date().toISOString()
+  });
+
   html(`<h3>Run ${runNumber} complete.</h3><p>Best span: <b>${bestSpan}</b></p><button class="btn" id="next">Next</button>`);
   document.getElementById('next').onclick = startNextRun;
 }
