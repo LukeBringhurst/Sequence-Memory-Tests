@@ -265,7 +265,8 @@ async function runSequenceTask(runNumber) {
         clicked: clicked.join('-'),
         correct: correct ? 1 : 0,
         rt_ms: Math.round(rt),
-        retries
+        retries,
+	timestamp: new Date().toISOString()
       });
 
       if (correct) {
@@ -303,7 +304,8 @@ async function runSequenceTask(runNumber) {
     type: 'sequence_runEnd',
     participant: state.pid,
     run: runNumber,
-    maxSpan
+    maxSpan,
+    timestamp: new Date().toISOString()
   });
 
   html(`<h3>Sequence Task – Run Complete</h3>
