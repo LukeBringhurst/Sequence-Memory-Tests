@@ -369,7 +369,7 @@ async function runSequenceTask(runNumber) {
   html(`<h3>Sequence Task – Run Complete</h3>
         <p>Your max span was <b>${maxSpan}</b></p>
         <button class="btn" id="continue">Finish</button>`);
-  document.getElementById('continue').onclick = showFinalScreen;
+  document.getElementById('continue').onclick = startNextRun;
 }
 
 
