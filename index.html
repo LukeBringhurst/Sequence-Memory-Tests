@@ -105,14 +105,14 @@ function welcomeScreen() {
   html(`
     <h2>Martial Arts Memory Study</h2>
     <p>Please enter your Participant ID to begin:</p>
-    <input type="text" id="pid" placeholder="e.g., MA001">
+    <input type="text" id="pid" placeholder="e.g., M01">
     <div class="spacer"></div>
     <div class="muted">You will complete two short memory tests.</div>
     <button class="btn" id="begin">Start</button>
   `);
   document.getElementById('begin').onclick = () => {
     const pid = document.getElementById('pid').value.trim();
-    state.pid = pid || 'anon_' + Math.random().toString(36).slice(2, 8);
+    state.pid = pid.trim().toUpperCase();
     state.task = 'corsi';
     state.runIndex = 0;
     startNextRun();
