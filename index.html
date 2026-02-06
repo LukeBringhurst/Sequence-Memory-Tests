@@ -82,10 +82,18 @@ let state = {
   pid: null,
   task: 'corsi',
   runIndex: 0,
-  data: []
+  data: [],
+  order: null,
+  phaseIndex: 0
 };
 
 const app = document.getElementById('app');
+const DEVICE_META = {
+  user_agent: navigator.userAgent,
+  screen_px: `${window.screen.width}x${window.screen.height}`,
+  viewport_px: `${window.innerWidth}x${window.innerHeight}`,
+  platform: navigator.platform || ""
+};
 function html(s) { app.innerHTML = s; }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function shuffle(a) {
@@ -100,6 +108,19 @@ function gridHTML() {
   return `<div class="grid">${GRID.map(i =>
     `<div class="cell" id="c${i}" data-idx="${i}"></div>`).join('')}</div>`;
 }
+function hashStringToInt(s) {
+  // simple deterministic hash
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function getTaskOrder(pid) {
+  // Prefer numeric part (M01/R02), fall back to string hash (e.g., TEST)
+  const digits = (pid.match(/\d+/g) || []).join('');
+  const n = digits ? parseInt(digits, 10) : hashStringToInt(pid);
+  return (n % 2 === 0) ? ['sequence', 'corsi'] : ['corsi', 'sequence'];
+}
 
 function welcomeScreen() {
   html(`
@@ -107,15 +128,22 @@ function welcomeScreen() {
     <p>Please enter your Participant ID to begin:</p>
     <input type="text" id="pid" placeholder="e.g., M01">
     <div class="spacer"></div>
-    <div class="muted">You will complete two short memory tests.</div>
+    <div class="muted">
+  You will complete two short memory tasks.
+  Please do this in a quiet place and avoid interruptions. 
+  Use the same device each day if possible.
+</div>
     <button class="btn" id="begin">Start</button>
   `);
   document.getElementById('begin').onclick = () => {
     const pid = document.getElementById('pid').value.trim();
     state.pid = pid.trim().toUpperCase();
-    state.task = 'corsi';
+    state.order = getTaskOrder(state.pid);
+    state.phaseIndex = 0;
+    state.task = state.order[0];
     state.runIndex = 0;
     startNextRun();
+
   };
 }
 
@@ -150,34 +178,52 @@ function collectClicks(n) {
 }
 
 async function startNextRun() {
-  if (state.task === 'corsi') {
-    if (state.runIndex >= CONFIG.corsi.runsPerSession) {
-      state.task = 'sequence';
+  const isCorsi = (state.task === 'corsi');
+  const runsPerSession = isCorsi ? CONFIG.corsi.runsPerSession : CONFIG.seq.runsPerSession;
+
+  // finished the current task?
+  if (state.runIndex >= runsPerSession) {
+    // if we just finished the first task, switch to second with a short break screen
+    if (state.phaseIndex === 0) {
+      state.phaseIndex = 1;
+      state.task = state.order[1];
       state.runIndex = 0;
-      const bestSpan = Math.max(
-        ...state.data.filter(r => r.type === 'corsi' && r.correct).map(r => r.len),
-        0
-      );
+
+      // optional: show a transition screen (keep your existing corsi bestSpan message when corsi finishes)
+      const msg = (isCorsi)
+        ? (() => {
+            const bestSpan = Math.max(
+              ...state.data.filter(r => r.type === 'corsi' && r.correct).map(r => r.len),
+              0
+            );
+            return `<p>You completed the Corsi test. Your best span was <b>${bestSpan}</b>.</p>`;
+          })()
+        : `<p>You completed the Sequence task.</p>`;
+
       html(`
         <h2>Take a short break.</h2>
-        <p>You completed the Corsi test. Your best span was <b>${bestSpan}</b>.</p>
+        ${msg}
         <p>Click below to begin the next task.</p>
         <button class="btn" id="next">Continue</button>
       `);
       document.getElementById('next').onclick = startNextRun;
       return;
     }
-    state.runIndex++;
+
+    // finished second task too → done
+    showFinalScreen();
+    return;
+  }
+
+  // otherwise run the next run of current task
+  state.runIndex++;
+  if (state.task === 'corsi') {
     await runCorsi(state.runIndex);
   } else {
-    if (state.runIndex >= CONFIG.seq.runsPerSession) {
-      showFinalScreen();
-      return;
-    }
-    state.runIndex++;
     await runSequenceTask(state.runIndex);
   }
 }
+
 
 async function runCorsi(runNumber) {
   let currentLen = CONFIG.corsi.startLen;
@@ -213,7 +259,8 @@ async function runCorsi(runNumber) {
       clicked: clicked.join('-'),
       rt_ms: Math.round(rt),
       participant: state.pid,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      ...DEVICE_META
     });
     if (CONFIG.corsi.feedback) {
       const msg = correct ? "Correct!" : "Incorrect";
@@ -231,7 +278,8 @@ async function runCorsi(runNumber) {
     participant: state.pid,
     run: runNumber,
     maxSpan: bestSpan,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    ...DEVICE_META
   });
 
   html(`<h3>Run ${runNumber} complete.</h3><p>Best span: <b>${bestSpan}</b></p><button class="btn" id="next">Next</button>`);
@@ -274,7 +322,8 @@ async function runSequenceTask(runNumber) {
         correct: correct ? 1 : 0,
         rt_ms: Math.round(rt),
         retries,
-	timestamp: new Date().toISOString()
+	timestamp: new Date().toISOString(),
+        ...DEVICE_META
       });
 
       if (correct) {
@@ -313,7 +362,8 @@ async function runSequenceTask(runNumber) {
     participant: state.pid,
     run: runNumber,
     maxSpan,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    ...DEVICE_META
   });
 
   html(`<h3>Sequence Task – Run Complete</h3>
@@ -390,6 +440,12 @@ function downloadCSV() {
 document.addEventListener('click', e => {
   if(e.target && e.target.id === 'dl') downloadCSV();
 });
+
+window.addEventListener("beforeunload", (e) => {
+  e.preventDefault();
+  e.returnValue = "";
+});
+
 
 welcomeScreen();
 </script>
