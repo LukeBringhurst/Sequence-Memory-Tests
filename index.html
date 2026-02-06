@@ -89,11 +89,11 @@ let state = {
 
 const app = document.getElementById('app');
 const DEVICE_META = {
-  user_agent: navigator.userAgent,
-  screen_px: `${window.screen.width}x${window.screen.height}`,
-  viewport_px: `${window.innerWidth}x${window.innerHeight}`,
-  platform: navigator.platform || ""
+  device: navigator.userAgent,
+  screen: `${window.screen.width}x${window.screen.height}`,
+  viewport: `${window.innerWidth}x${window.innerHeight}`
 };
+
 function html(s) { app.innerHTML = s; }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function shuffle(a) {
@@ -368,7 +368,7 @@ async function runSequenceTask(runNumber) {
 
   html(`<h3>Sequence Task – Run Complete</h3>
         <p>Your max span was <b>${maxSpan}</b></p>
-        <button class="btn" id="continue">Finish</button>`);
+        <button class="btn" id="continue">Next</button>`);
   document.getElementById('continue').onclick = startNextRun;
 }
 
