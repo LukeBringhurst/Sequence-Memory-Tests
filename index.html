@@ -287,7 +287,7 @@ async function runCorsi(runNumber) {
 }
 
 async function runSequenceTask(runNumber) {
-  let sequence = [Math.floor(Math.random() * 9)];
+  let sequence = [Math.floor(Math.random() * 12)];
   let trialIndex = 0;
   let maxSpan = 0;
   let endTask = false;
@@ -378,7 +378,7 @@ async function runSequenceTask(runNumber) {
 function getNextCell(currentSeq) {
   let next;
   do {
-    next = Math.floor(Math.random() * 9);
+    next = Math.floor(Math.random() * 12);
   } while (next === currentSeq[currentSeq.length - 1]);
   return next;
 }
